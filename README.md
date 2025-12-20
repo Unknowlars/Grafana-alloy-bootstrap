@@ -8,7 +8,7 @@ Run one script, select “packs” (pre-configured metrics/log collectors), ente
 ## Quick start
 
 ```bash
-git clone <YOUR_GIT_URL> Grafana-alloy
+git clone https://github.com/Unknowlars/Grafana-alloy-bootstrap.git
 cd Grafana-alloy/alloy-bootstrap
 chmod +x setup.sh
 sudo ./setup.sh
