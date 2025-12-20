@@ -1,0 +1,5 @@
+prometheus.remote_write "local" {
+  endpoint {
+    url = "${PROM_REMOTE_WRITE_URL}"
+  }
+}

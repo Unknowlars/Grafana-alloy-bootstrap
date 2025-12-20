@@ -1,0 +1,37 @@
+local.file_match "traefik_logs_match" {
+  path_targets = [{
+    __path__   = "${TRAEFIK_LOG_GLOB}",
+    job        = "traefiklogs",
+    instance   = constants.hostname,
+  }]
+}
+
+loki.source.file "traefik_logs_source" {
+  targets    = local.file_match.traefik_logs_match.targets
+  forward_to = [loki.process.traefik_geo_country.receiver]
+}
+
+loki.process "traefik_geo_country" {
+  // Traefik access logs are JSON. Extract client IP from Cloudflare header key:
+  // request_Cf-Connecting-Ip
+  // Hyphen needs quoting in JMESPath, so we keep it as a quoted key string.
+  stage.json {
+    expressions = {
+      client_ip = "\"request_Cf-Connecting-Ip\"",
+    }
+  }
+
+  stage.geoip {
+    db      = "${GEOIP_DB_PATH}"
+    db_type = "country"
+    source  = "client_ip"
+  }
+
+  stage.labels {
+    values = {
+      country_name = "geoip_country_name",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}

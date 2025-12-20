@@ -1,0 +1,47 @@
+// ==============================
+// Loki: Systemd journal + /var/log
+// ==============================
+
+discovery.relabel "logs_journal_rules" {
+  targets = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["__journal__boot_id"]
+    target_label  = "boot_id"
+  }
+
+  rule {
+    source_labels = ["__journal__transport"]
+    target_label  = "transport"
+  }
+
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+loki.source.journal "systemd_journal" {
+  max_age       = "24h0m0s"
+  relabel_rules = discovery.relabel.logs_journal_rules.rules
+  forward_to    = [loki.write.local.receiver]
+}
+
+local.file_match "system_logs" {
+  path_targets = [{
+    __address__ = "localhost",
+    __path__    = "/var/log/{syslog,messages,auth,*.log}",
+    instance    = constants.hostname,
+    job         = "integrations/node_exporter",
+  }]
+}
+
+loki.source.file "system_logs" {
+  targets    = local.file_match.system_logs.targets
+  forward_to = [loki.write.local.receiver]
+}

@@ -1,0 +1,7 @@
+prometheus.scrape "logporter" {
+  scrape_interval = "15s"
+  targets = [{
+    __address__ = "${LOGPORTER_ADDR}",
+  }]
+  forward_to = [prometheus.remote_write.local.receiver]
+}

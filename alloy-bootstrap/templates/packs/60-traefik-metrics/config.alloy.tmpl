@@ -1,0 +1,21 @@
+discovery.relabel "traefik_metrics_relabel" {
+  targets = [{
+    __address__ = "${TRAEFIK_METRICS_ADDR}"
+  }]
+
+  rule {
+    target_label = "job"
+    replacement  = "integrations/traefik"
+  }
+
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+}
+
+prometheus.scrape "traefik_metrics_scrape" {
+  targets    = discovery.relabel.traefik_metrics_relabel.output
+  forward_to = [prometheus.remote_write.local.receiver]
+  job_name   = "integrations/traefik"
+}
