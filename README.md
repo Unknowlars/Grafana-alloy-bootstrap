@@ -14,8 +14,9 @@ chmod +x setup.sh
 sudo ./setup.sh
 ```
 ---
-```bash
 ## Example run
+```bash
+
 ./setup.sh 
 
 ==> Starting alloy-bootstrap setup (rerunnable) ...
