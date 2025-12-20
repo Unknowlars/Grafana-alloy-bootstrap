@@ -8,10 +8,60 @@ Run one script, select “packs” (pre-configured metrics/log collectors), ente
 ## Quick start
 
 ```bash
-git clone https://github.com/Unknowlars/Grafana-alloy-bootstrap.git
-cd Grafana-alloy-bootstrap/alloy-bootstrap
+git clone <YOUR_GIT_URL> Grafana-alloy
+cd Grafana-alloy/alloy-bootstrap
 chmod +x setup.sh
 sudo ./setup.sh
+```
+---
+```bash
+## Example run
+./setup.sh 
+
+==> Starting alloy-bootstrap setup (rerunnable) ...
+==> Alloy installed version: 1.12.1-1
+==> Alloy APT candidate:     1.12.1-1
+==> Alloy is up to date (or no candidate available).
+
+Available collection packs:
+
+   1) [x] Host metrics (node_exporter)  [metrics]
+   2) [x] Host logs (journald + /var/log)  [logs]
+   3) [x] Docker containers (cAdvisor metrics + docker logs)  [metrics,logs]
+   4) [ ] Scrape logporter metrics (custom Prometheus scrape)  [metrics]
+   5) [ ] Postgres exporter scrape  [metrics]
+   6) [ ] Traefik metrics scrape (integrations/traefik)  [metrics]
+   7) [ ] Traefik access logs (file) -> GeoIP country label -> Loki  [logs]
+   8) [ ] Enable livedebugging (Alloy UI debug stream)  [none]
+
+Previously enabled packs: host-metrics host-logs docker
+
+Select packs by number (space-separated) [1 2 3]: 1 2 3
+
+Prometheus/VictoriaMetrics base (previous: http://192.168.0.123:9090) — enter http(s)://host:port or host:port [http://192.168.0.123:9090]: 
+==> Using Prometheus/VictoriaMetrics base: http://192.168.0.123:9090
+
+Loki base (previous: http://192.168.0.123:3400) — enter http(s)://host:port or host:port [http://192.168.0.123:3400]: 
+==> Using Loki base: http://192.168.0.123:3400
+
+==> Pack-specific settings:
+Expose Alloy HTTP UI on network (sets --server.http.listen-addr)? [y/N]: y
+Listen address (host:port) [127.0.0.1:12345]: 
+==> Using Alloy UI listen addr: 127.0.0.1:12345
+==> Backed up /etc/default/alloy -> /etc/default/alloy.bak.20251220-224151
+==> Wrote /etc/default/alloy
+==> Backed up /etc/alloy/config.alloy -> /etc/alloy/config.alloy.bak.20251220-224151
+==> Installed validated config to /etc/alloy/config.alloy
+==> User 'alloy' already in group 'docker'.
+==> User 'alloy' already in group 'systemd-journal'.
+==> User 'alloy' already in group 'adm'.
+==> Reloaded Alloy.
+==> Saved state to /var/lib/alloy-bootstrap/state.env
+==> Done. Run again anytime after git pull or when adding packs.
+  Prom remote_write: http://192.168.0.123:9090/api/v1/write
+  Loki push:         http://192.168.0.123:3400/loki/api/v1/push
+  Alloy UI listen:   127.0.0.1:12345
+  
 ```
 ---
 
