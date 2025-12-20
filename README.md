@@ -205,7 +205,7 @@ Flags:
 
 ---
 
-## Exposing the Alloy UI (security)
+## Exposing the Alloy UI
 
 If you enable the UI, the script writes this to `/etc/default/alloy`:
 
@@ -213,7 +213,7 @@ If you enable the UI, the script writes this to `/etc/default/alloy`:
 CUSTOM_ARGS="--server.http.listen-addr=0.0.0.0:12345"
 ```
 
-Binding to `0.0.0.0` exposes the UI on the network. Prefer `127.0.0.1:12345` 
+Binding to `0.0.0.0` exposes the UI on the network. Prefer `127.0.0.1:12345`.
 ---
 
 ## Rollback / undo
