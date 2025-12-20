@@ -28,31 +28,24 @@ STATE_FILE="${STATE_DIR}/state.env"
 DEBUG=0
 NO_INSTALL=0
 
-STABILITY_LEVEL="${STABILITY_LEVEL:-generally-available}"     
+# New CLI controls
+NONINTERACTIVE=0
+AUTO_YES=0
+
+PACKS_ARG=""
+PROM_BASE_URL_ARG=""
+LOKI_BASE_URL_ARG=""
+UI_LISTEN_ADDR_ARG=""
+NO_UI=0
+
+declare -A CLI_VARS=()
+
+STABILITY_LEVEL="${STABILITY_LEVEL:-generally-available}"
 COMMUNITY_COMPONENTS="${COMMUNITY_COMPONENTS:-false}"
 
 # Public-friendly defaults
 DEFAULT_PROM_BASE_URL="${DEFAULT_PROM_BASE_URL:-http://YOUR_PROMETHEUS_IP_OR_DNS_NAME:PORT}"
 DEFAULT_LOKI_BASE_URL="${DEFAULT_LOKI_BASE_URL:-http://YOUR_LOKI_IP_OR_DNS_NAME:PORT}"
-
-# =========================
-# Args
-# =========================
-for arg in "$@"; do
-  case "$arg" in
-    --debug) DEBUG=1 ;;
-    --no-install) NO_INSTALL=1 ;;
-    *)
-      echo "Unknown arg: $arg" >&2
-      echo "Usage: $0 [--debug] [--no-install]" >&2
-      exit 2
-      ;;
-  esac
-done
-
-if [[ "$DEBUG" -eq 1 ]]; then
-  set -x
-fi
 
 # =========================
 # Helpers
@@ -63,6 +56,109 @@ info() { echo "==> $*"; }
 
 need_root() { [[ "${EUID}" -eq 0 ]] || err "Run as root: sudo $0"; }
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+trim() {
+  sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  setup.sh [options]
+
+Interactive (default):
+  sudo ./setup.sh
+
+Non-interactive / silent:
+  sudo ./setup.sh --non-interactive --packs host-metrics,host-logs,docker \
+    --prom-base-url http://192.168.0.123:9090 \
+    --loki-base-url http://192.168.0.123:3400 \
+    --ui-listen-addr 127.0.0.1:12345
+
+Options:
+  --non-interactive, --silent   Run without prompts (uses flags/state/defaults)
+  --yes                         Answer "yes" to yes/no prompts in silent mode
+
+  --packs <ids>                 Comma/space-separated pack IDs (e.g. docker,host-logs)
+                                If omitted in silent mode, uses LAST_SELECTED_PACK_IDS if present
+
+  --prom-base-url <url>         Prom/Victoria base URL (http(s)://host:port or host:port)
+  --loki-base-url <url>         Loki base URL (http(s)://host:port or host:port)
+
+  --ui-listen-addr <host:port>  Enable UI and set --server.http.listen-addr
+  --no-ui                        Force disable UI even if state had it
+
+  --var NAME=value               Provide pack vars (repeatable)
+
+  --debug                        set -x
+  --no-install                   skip APT install/upgrade checks
+  -h, --help                     show this help
+EOF
+}
+
+parse_kv_var() {
+  local kv="$1"
+  [[ "$kv" == *"="* ]] || err "--var expects NAME=value (got: $kv)"
+  local k="${kv%%=*}"
+  local v="${kv#*=}"
+  k="$(echo "$k" | trim)"
+  [[ -n "$k" ]] || err "--var expects NAME=value (empty NAME)"
+  CLI_VARS["$k"]="$v"
+}
+
+# =========================
+# Args
+# =========================
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --debug) DEBUG=1 ;;
+    --no-install) NO_INSTALL=1 ;;
+    --non-interactive|--silent) NONINTERACTIVE=1 ;;
+    --yes|--assume-yes) AUTO_YES=1 ;;
+    --packs)
+      shift
+      [[ $# -gt 0 ]] || err "--packs requires a value"
+      PACKS_ARG="$1"
+      ;;
+    --packs=*) PACKS_ARG="${1#*=}" ;;
+    --prom-base-url)
+      shift
+      [[ $# -gt 0 ]] || err "--prom-base-url requires a value"
+      PROM_BASE_URL_ARG="$1"
+      ;;
+    --prom-base-url=*) PROM_BASE_URL_ARG="${1#*=}" ;;
+    --loki-base-url)
+      shift
+      [[ $# -gt 0 ]] || err "--loki-base-url requires a value"
+      LOKI_BASE_URL_ARG="$1"
+      ;;
+    --loki-base-url=*) LOKI_BASE_URL_ARG="${1#*=}" ;;
+    --ui-listen-addr)
+      shift
+      [[ $# -gt 0 ]] || err "--ui-listen-addr requires a value"
+      UI_LISTEN_ADDR_ARG="$1"
+      ;;
+    --ui-listen-addr=*) UI_LISTEN_ADDR_ARG="${1#*=}" ;;
+    --no-ui) NO_UI=1 ;;
+    --var)
+      shift
+      [[ $# -gt 0 ]] || err "--var requires NAME=value"
+      parse_kv_var "$1"
+      ;;
+    --var=*) parse_kv_var "${1#*=}" ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+      echo "Unknown arg: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift || true
+done
+
+if [[ "$DEBUG" -eq 1 ]]; then
+  set -x
+fi
 
 backup_file() {
   local f="$1"
@@ -78,6 +174,12 @@ ask_yes_no() {
   local hint="[y/n]"
   [[ "$default" == "y" ]] && hint="[Y/n]"
   [[ "$default" == "n" ]] && hint="[y/N]"
+
+  if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
+    if [[ "${AUTO_YES}" -eq 1 ]]; then return 0; fi
+    [[ "$default" == "y" ]] && return 0 || return 1
+  fi
+
   while true; do
     read -r -p "$prompt $hint: " ans || true
     ans="${ans:-$default}"
@@ -91,6 +193,12 @@ ask_yes_no() {
 
 ask_input() {
   local prompt="$1" default="${2:-}" value
+
+  if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
+    echo "$default"
+    return 0
+  fi
+
   if [[ -n "$default" ]]; then
     read -r -p "$prompt [$default]: " value || true
     echo "${value:-$default}"
@@ -100,16 +208,15 @@ ask_input() {
   fi
 }
 
-trim() {
-  sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
-}
-
 ask_nonempty() {
   local prompt="$1" default="${2:-}" value
   while true; do
     value="$(ask_input "$prompt" "$default")"
     value="$(echo "$value" | trim)"
     [[ -n "$value" ]] && { echo "$value"; return 0; }
+    if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
+      err "Missing required value for: $prompt (provide via flags or state/defaults)"
+    fi
     echo "Please enter a value."
   done
 }
@@ -424,6 +531,53 @@ print_menu_and_select() {
   out_selected_ids=("${chosen_ids[@]}")
 }
 
+list_available_pack_ids() {
+  local -a ids=()
+  for d in "${PACK_DIRS[@]}"; do
+    local conf="${d}/pack.conf"
+    [[ -f "$conf" ]] || continue
+    load_pack_conf "$conf"
+    validate_signals_value "$signals" || continue
+    ids+=("$id")
+  done
+  echo "${ids[*]}"
+}
+
+select_packs_noninteractive() {
+  local -n out_selected_dirs=$1
+  local -n out_selected_ids=$2
+  local list="$3"
+
+  list="${list//,/ }"
+  list="$(echo "$list" | trim)"
+  [[ -n "$list" ]] || err "No packs specified. Use --packs or ensure state has LAST_SELECTED_PACK_IDS."
+
+  local -a chosen_dirs=()
+  local -a chosen_ids=()
+  local wanted found d conf
+
+  for wanted in $list; do
+    found=""
+    for d in "${PACK_DIRS[@]}"; do
+      conf="${d}/pack.conf"
+      [[ -f "$conf" ]] || continue
+      load_pack_conf "$conf"
+      validate_signals_value "$signals" || continue
+      if [[ "$id" == "$wanted" ]]; then
+        found="$d"
+        break
+      fi
+    done
+    [[ -n "$found" ]] || err "Unknown pack id '$wanted'. Available: $(list_available_pack_ids)"
+    chosen_dirs+=("$found")
+    chosen_ids+=("$wanted")
+  done
+
+  [[ "${#chosen_dirs[@]}" -gt 0 ]] || err "No valid packs selected."
+  out_selected_dirs=("${chosen_dirs[@]}")
+  out_selected_ids=("${chosen_ids[@]}")
+}
+
 # =========================
 # Alloy config validation
 # =========================
@@ -460,7 +614,15 @@ main() {
 
   local -a selected_dirs=()
   local -a selected_ids=()
-  print_menu_and_select selected_dirs selected_ids
+
+  if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
+    if [[ -z "${PACKS_ARG}" && -n "${LAST_SELECTED_PACK_IDS:-}" ]]; then
+      PACKS_ARG="${LAST_SELECTED_PACK_IDS}"
+    fi
+    select_packs_noninteractive selected_dirs selected_ids "${PACKS_ARG}"
+  else
+    print_menu_and_select selected_dirs selected_ids
+  fi
 
   local need_metrics=0 need_logs=0
   local -a required_groups=()
@@ -503,33 +665,57 @@ main() {
   if [[ "$need_metrics" == "1" ]]; then
     local default_prom="${LAST_PROM_BASE_URL:-}"
     local raw base
-    while true; do
-      raw="$(ask_nonempty "Prometheus/VictoriaMetrics base (previous: ${default_prom:-none}) — enter http(s)://host:port or host:port" "$default_prom")"
-      if base="$(normalize_base_url "$raw")" && validate_base_url "$base"; then
-        PROM_REMOTE_WRITE_URL="$(join_url_path "$base" "$PROM_REMOTE_WRITE_PATH")"
-        export PROM_REMOTE_WRITE_URL
-        LAST_PROM_BASE_URL="$base"
-        info "Using Prometheus/VictoriaMetrics base: $base"
-        break
-      fi
-      echo "Example: http://PROMTHUES_IP_OR_DNS:9090"
-    done
+
+    if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
+      raw="${PROM_BASE_URL_ARG:-$default_prom}"
+      [[ -n "$raw" ]] || err "Metrics packs selected but no Prometheus base provided. Use --prom-base-url or ensure state has LAST_PROM_BASE_URL."
+      base="$(normalize_base_url "$raw")" || err "Invalid Prometheus base: $raw"
+      validate_base_url "$base" || err "Invalid Prometheus base: $base (expected http(s)://host:port)"
+      PROM_REMOTE_WRITE_URL="$(join_url_path "$base" "$PROM_REMOTE_WRITE_PATH")"
+      export PROM_REMOTE_WRITE_URL
+      LAST_PROM_BASE_URL="$base"
+      info "Using Prometheus/VictoriaMetrics base: $base"
+    else
+      while true; do
+        raw="$(ask_nonempty "Prometheus/VictoriaMetrics base (previous: ${default_prom:-none}) — enter http(s)://host:port or host:port" "$default_prom")"
+        if base="$(normalize_base_url "$raw")" && validate_base_url "$base"; then
+          PROM_REMOTE_WRITE_URL="$(join_url_path "$base" "$PROM_REMOTE_WRITE_PATH")"
+          export PROM_REMOTE_WRITE_URL
+          LAST_PROM_BASE_URL="$base"
+          info "Using Prometheus/VictoriaMetrics base: $base"
+          break
+        fi
+        echo "Example: http://PROMTHUES_IP_OR_DNS:9090"
+      done
+    fi
   fi
 
   if [[ "$need_logs" == "1" ]]; then
     local default_loki="${LAST_LOKI_BASE_URL:-}"
     local raw base
-    while true; do
-      raw="$(ask_nonempty "Loki base (previous: ${default_loki:-none}) — enter http(s)://host:port or host:port" "$default_loki")"
-      if base="$(normalize_base_url "$raw")" && validate_base_url "$base"; then
-        LOKI_PUSH_URL="$(join_url_path "$base" "$LOKI_PUSH_PATH")"
-        export LOKI_PUSH_URL
-        LAST_LOKI_BASE_URL="$base"
-        info "Using Loki base: $base"
-        break
-      fi
-      echo "Example: http://LOKI_IP_OR_DNS:3400"
-    done
+
+    if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
+      raw="${LOKI_BASE_URL_ARG:-$default_loki}"
+      [[ -n "$raw" ]] || err "Logs packs selected but no Loki base provided. Use --loki-base-url or ensure state has LAST_LOKI_BASE_URL."
+      base="$(normalize_base_url "$raw")" || err "Invalid Loki base: $raw"
+      validate_base_url "$base" || err "Invalid Loki base: $base (expected http(s)://host:port)"
+      LOKI_PUSH_URL="$(join_url_path "$base" "$LOKI_PUSH_PATH")"
+      export LOKI_PUSH_URL
+      LAST_LOKI_BASE_URL="$base"
+      info "Using Loki base: $base"
+    else
+      while true; do
+        raw="$(ask_nonempty "Loki base (previous: ${default_loki:-none}) — enter http(s)://host:port or host:port" "$default_loki")"
+        if base="$(normalize_base_url "$raw")" && validate_base_url "$base"; then
+          LOKI_PUSH_URL="$(join_url_path "$base" "$LOKI_PUSH_PATH")"
+          export LOKI_PUSH_URL
+          LAST_LOKI_BASE_URL="$base"
+          info "Using Loki base: $base"
+          break
+        fi
+        echo "Example: http://LOKI_IP_OR_DNS:3400"
+      done
+    fi
   fi
 
   if [[ "${#required_vars[@]}" -gt 0 ]]; then
@@ -542,33 +728,64 @@ main() {
         warn "Skipping invalid var spec: $spec"
         continue
       fi
-      local val
-      val="$(ask_input "$prompt" "${defval:-}")"
+
+      local val=""
+      if [[ -n "${!varname:-}" ]]; then
+        val="${!varname}"
+      elif [[ -n "${CLI_VARS[$varname]+x}" ]]; then
+        val="${CLI_VARS[$varname]}"
+      elif [[ "${NONINTERACTIVE}" -eq 1 ]]; then
+        if [[ -n "${defval:-}" ]]; then
+          val="${defval}"
+        else
+          err "Missing required pack var '${varname}'. Provide --var ${varname}=... or set env var ${varname}."
+        fi
+      else
+        val="$(ask_input "$prompt" "${defval:-}")"
+      fi
+
       export "${varname}=${val}"
       info "Using ${varname}=${val}"
     done
   fi
 
   local CUSTOM_ARGS=""
-  if ask_yes_no "Expose Alloy HTTP UI on network (sets --server.http.listen-addr)?" "n"; then
-    # SAFER default: localhost, not 0.0.0.0
-    local default_ui="${LAST_UI_LISTEN_ADDR:-127.0.0.1:12345}"
-    local addr
-    while true; do
-      addr="$(ask_input "Listen address (host:port)" "$default_ui")"
-      if validate_listen_addr "$addr"; then
-        CUSTOM_ARGS="--server.http.listen-addr=${addr}"
-        LAST_UI_LISTEN_ADDR="$addr"
-        info "Using Alloy UI listen addr: $addr"
-        if [[ "$addr" == 0.0.0.0:* || "$addr" == ::* ]]; then
-          warn "Alloy UI bound to a public interface ($addr). Ensure firewalling or bind to 127.0.0.1."
-        fi
-        break
+  if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
+    if [[ "${NO_UI}" -eq 1 ]]; then
+      CUSTOM_ARGS=""
+      LAST_UI_LISTEN_ADDR=""
+    elif [[ -n "${UI_LISTEN_ADDR_ARG}" ]]; then
+      validate_listen_addr "${UI_LISTEN_ADDR_ARG}" || err "Invalid --ui-listen-addr (expected host:port): ${UI_LISTEN_ADDR_ARG}"
+      CUSTOM_ARGS="--server.http.listen-addr=${UI_LISTEN_ADDR_ARG}"
+      LAST_UI_LISTEN_ADDR="${UI_LISTEN_ADDR_ARG}"
+      info "Using Alloy UI listen addr: ${UI_LISTEN_ADDR_ARG}"
+      if [[ "${UI_LISTEN_ADDR_ARG}" == 0.0.0.0:* || "${UI_LISTEN_ADDR_ARG}" == ::* ]]; then
+        warn "Alloy UI bound to a public interface (${UI_LISTEN_ADDR_ARG}). Ensure firewalling or bind to 127.0.0.1."
       fi
-      echo "Example: 127.0.0.1:12345"
-    done
+    else
+      CUSTOM_ARGS=""
+      LAST_UI_LISTEN_ADDR=""
+    fi
   else
-    LAST_UI_LISTEN_ADDR=""
+    if ask_yes_no "Expose Alloy HTTP UI on network (sets --server.http.listen-addr)?" "n"; then
+      local default_ui="${LAST_UI_LISTEN_ADDR:-127.0.0.1:12345}"
+      local addr
+      while true; do
+        addr="$(ask_input "Listen address (host:port)" "$default_ui")"
+        if validate_listen_addr "$addr"; then
+          CUSTOM_ARGS="--server.http.listen-addr=${addr}"
+          LAST_UI_LISTEN_ADDR="$addr"
+          info "Using Alloy UI listen addr: $addr"
+          if [[ "$addr" == 0.0.0.0:* || "$addr" == ::* ]]; then
+            warn "Alloy UI bound to a public interface ($addr). Ensure firewalling or bind to 127.0.0.1."
+          fi
+          break
+        fi
+        echo "Example: 127.0.0.1:12345"
+      done
+    else
+      LAST_UI_LISTEN_ADDR=""
+    fi
   fi
 
   mkdir -p "$CFG_DIR"

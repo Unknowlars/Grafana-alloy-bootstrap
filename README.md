@@ -4,6 +4,8 @@
 
 Run one script, select “packs” (pre-configured metrics/log collectors), enter your Prometheus and/or Loki endpoints, and it generates `/etc/alloy/config.alloy` and reloads Alloy.
 
+This project supports **both interactive** (menu + prompts) and **non-interactive / silent** installs (CLI flags), which is useful for automation/provisioning.
+
 
 ## Quick start
 
@@ -13,11 +15,17 @@ cd Grafana-alloy/alloy-bootstrap
 chmod +x setup.sh
 sudo ./setup.sh
 ```
----
-## Example run
-```bash
 
-./setup.sh 
+---
+
+## Interactive mode (default)
+
+Interactive mode shows a menu of packs and prompts you for required settings (Prometheus/Loki endpoints, pack variables, optional UI bind).
+
+### Example interactive run
+
+```bash
+./setup.sh
 
 ==> Starting alloy-bootstrap setup (rerunnable) ...
 ==> Alloy installed version: 1.12.1-1
@@ -39,15 +47,15 @@ Previously enabled packs: host-metrics host-logs docker
 
 Select packs by number (space-separated) [1 2 3]: 1 2 3
 
-Prometheus/VictoriaMetrics base (previous: http://192.168.0.123:9090) — enter http(s)://host:port or host:port [http://192.168.0.123:9090]: 
+Prometheus/VictoriaMetrics base (previous: http://192.168.0.123:9090) — enter http(s)://host:port or host:port [http://192.168.0.123:9090]:
 ==> Using Prometheus/VictoriaMetrics base: http://192.168.0.123:9090
 
-Loki base (previous: http://192.168.0.123:3400) — enter http(s)://host:port or host:port [http://192.168.0.123:3400]: 
+Loki base (previous: http://192.168.0.123:3400) — enter http(s)://host:port or host:port [http://192.168.0.123:3400]:
 ==> Using Loki base: http://192.168.0.123:3400
 
 ==> Pack-specific settings:
 Expose Alloy HTTP UI on network (sets --server.http.listen-addr)? [y/N]: y
-Listen address (host:port) [127.0.0.1:12345]: 
+Listen address (host:port) [127.0.0.1:12345]:
 ==> Using Alloy UI listen addr: 127.0.0.1:12345
 ==> Backed up /etc/default/alloy -> /etc/default/alloy.bak.20251220-224151
 ==> Wrote /etc/default/alloy
@@ -62,22 +70,72 @@ Listen address (host:port) [127.0.0.1:12345]:
   Prom remote_write: http://192.168.0.123:9090/api/v1/write
   Loki push:         http://192.168.0.123:3400/loki/api/v1/push
   Alloy UI listen:   127.0.0.1:12345
-  
 ```
+
+---
+
+## Non-interactive / silent mode
+
+Silent mode skips all prompts. You provide everything via CLI flags (or it reuses values from the saved state file).
+
+### Example silent run
+
+```bash
+sudo ./setup.sh --non-interactive \
+  --packs host-metrics,host-logs,docker \
+  --prom-base-url http://192.168.0.123:8429 \
+  --loki-base-url http://192.168.0.238:3400 \
+  --ui-listen-addr 127.0.0.1:12345
+```
+
+### How silent mode resolves values
+
+- **Packs**:
+  - Use `--packs ...` if provided
+  - Otherwise reuse `LAST_SELECTED_PACK_IDS` from `/var/lib/alloy-bootstrap/state.env` (if present)
+- **Prometheus/Loki endpoints**:
+  - Use `--prom-base-url` / `--loki-base-url` if provided
+  - Otherwise reuse `LAST_PROM_BASE_URL` / `LAST_LOKI_BASE_URL` from state (if present)
+  - If you selected a metrics/logs pack but no endpoint can be resolved, the script exits with an error.
+- **Pack variables** (`vars=` in `pack.conf`):
+  - Highest priority: existing environment variable (e.g. `LOGPORTER_ADDR=...`)
+  - Next: `--var NAME=value`
+  - Next: default value from the pack (`vars=NAME:Prompt:Default`)
+  - If no value can be resolved and there is no default, the script exits with an error.
+- **Alloy UI listen address**:
+  - Use `--ui-listen-addr host:port` to enable it
+  - Use `--no-ui` to force-disable it
+
+### Pack variable examples
+
+```bash
+sudo ./setup.sh --non-interactive \
+  --packs logporter \
+  --prom-base-url http://192.168.0.123:8429 \
+  --var LOGPORTER_ADDR=192.168.0.50:9999
+```
+
+Or with environment variables:
+
+```bash
+export LOGPORTER_ADDR="192.168.0.50:9999"
+sudo ./setup.sh --non-interactive --packs logporter --prom-base-url http://192.168.0.123:8429
+```
+
 ---
 
 ## What it changes on your system
 
 On each run it:
 
-- Write (with timestamped backups):
+- Writes (with timestamped backups):
   - `/etc/alloy/config.alloy`
   - `/etc/default/alloy`
-- Store your last answers (defaults for next run):
+- Stores your last answers (defaults for next run):
   - `/var/lib/alloy-bootstrap/state.env`
-- Enable + reload/restart:
+- Enables + reloads/restarts:
   - `alloy.service`
-- Add the `alloy` user to groups required by selected packs (e.g. `docker`, `systemd-journal`, `adm`)
+- Adds the `alloy` user to groups required by selected packs (e.g. `docker`, `systemd-journal`, `adm`)
 
 > **Security note:** enabling some packs changes what the Alloy service user can access (especially Docker + system logs). Only enable what you need.
 
@@ -86,8 +144,9 @@ On each run it:
 ## How it works
 
 - Discovers packs from `templates/packs/*/pack.conf`
-- You select packs in a menu
-- It renders templates with `envsubst`
+- Interactive mode: you select packs in a menu
+- Silent mode: packs/settings come from flags and/or saved state
+- Renders templates with `envsubst`
 - Writes a combined config:
   - shared **sinks** from `templates/sinks/`
   - selected **packs** from `templates/packs/`
@@ -118,6 +177,8 @@ On each run it:
 
 ## Options
 
+### General options
+
 ```bash
 sudo ./setup.sh --debug
 sudo ./setup.sh --no-install
@@ -125,15 +186,34 @@ sudo ./setup.sh --no-install
 
 - `--debug`: shell trace (`set -x`)
 - `--no-install`: skip Alloy APT install/upgrade checks
+
+### Silent mode options
+
+```bash
+sudo ./setup.sh --non-interactive --packs host-metrics --prom-base-url http://192.168.0.123:8429
+```
+
+Flags:
+- `--non-interactive` / `--silent`: no prompts (automation-friendly)
+- `--yes`: answer “yes” to yes/no prompts (install/upgrade checks) in silent mode
+- `--packs <id1,id2,...>`: comma/space-separated pack IDs
+- `--prom-base-url <http(s)://host:port | host:port>`: Prometheus/VictoriaMetrics base
+- `--loki-base-url <http(s)://host:port | host:port>`: Loki base
+- `--ui-listen-addr <host:port>`: enable Alloy UI listen address
+- `--no-ui`: force-disable Alloy UI
+- `--var NAME=value`: pack variables (repeatable)
+
 ---
 
 ## Exposing the Alloy UI (security)
 
-If you answer “yes” to exposing the UI, the script writes this to `/etc/default/alloy`:
+If you enable the UI, the script writes this to `/etc/default/alloy`:
 
 ```bash
 CUSTOM_ARGS="--server.http.listen-addr=0.0.0.0:12345"
 ```
+
+Binding to `0.0.0.0` exposes the UI on the network. Prefer `127.0.0.1:12345` and access it via SSH port-forwarding unless you have firewalling in place.
 
 ---
 
