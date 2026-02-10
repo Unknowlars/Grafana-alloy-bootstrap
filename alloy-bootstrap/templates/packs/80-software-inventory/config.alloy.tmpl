@@ -29,7 +29,7 @@ prometheus.relabel "software_inventory" {
 }
 
 prometheus.scrape "software_inventory" {
-  scrape_interval = "1h"
+  scrape_interval = "1m"
   targets         = discovery.relabel.software_inventory.output
   forward_to      = [prometheus.relabel.software_inventory.receiver]
 }
