@@ -882,6 +882,19 @@ EOF
     warn "User 'alloy' not found; skipping group membership updates."
   fi
 
+  # ---- Run pack post-install hooks ----
+  for d in "${selected_dirs[@]}"; do
+    local hook="${d}/post-install.sh"
+    if [[ -x "$hook" ]]; then
+      info "Running post-install hook for $(basename "$d")..."
+      if bash "$hook"; then
+        info "Post-install hook completed: $(basename "$d")"
+      else
+        warn "Post-install hook failed: $(basename "$d") (continuing anyway)"
+      fi
+    fi
+  done
+
   systemctl enable --now alloy.service >/dev/null 2>&1 || true
 
   if (( NEED_RESTART )); then

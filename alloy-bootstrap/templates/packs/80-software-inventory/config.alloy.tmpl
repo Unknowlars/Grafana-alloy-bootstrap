@@ -1,0 +1,35 @@
+// Separate unix exporter instance that ONLY runs the textfile collector.
+// This avoids conflicts with the host-metrics pack's unix exporter.
+prometheus.exporter.unix "software_inventory" {
+  set_collectors = ["textfile"]
+  textfile {
+    directory = "/var/lib/prometheus/node-exporter"
+  }
+}
+
+discovery.relabel "software_inventory" {
+  targets = prometheus.exporter.unix.software_inventory.targets
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+  rule {
+    target_label = "job"
+    replacement  = "integrations/software_inventory"
+  }
+}
+
+prometheus.relabel "software_inventory" {
+  forward_to = [prometheus.remote_write.local.receiver]
+  rule {
+    source_labels = ["__name__"]
+    regex         = "linux_.*"
+    action        = "keep"
+  }
+}
+
+prometheus.scrape "software_inventory" {
+  scrape_interval = "1h"
+  targets         = discovery.relabel.software_inventory.output
+  forward_to      = [prometheus.relabel.software_inventory.receiver]
+}
