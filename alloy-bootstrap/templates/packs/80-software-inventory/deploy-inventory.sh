@@ -1,5 +1,164 @@
 #!/bin/bash
 # =============================================================================
+# Linux Software Inventory — All-in-One Installer
+# =============================================================================
+# Self-contained deployment script. Does everything the Ansible role does:
+#   1. Installs dependencies (jq, openssl)
+#   2. Creates directories
+#   3. Deploys linux_inventory.sh + eol-products.conf
+#   4. Fetches full EOL dump from endoflife.date API
+#   5. Sets up cron (every 6 hours)
+#   6. Runs initial collection
+#
+# Usage:
+#   curl -sL <url>/deploy-inventory.sh | sudo bash
+#   # or
+#   chmod +x deploy-inventory.sh
+#   sudo ./deploy-inventory.sh
+#
+# Options:
+#   --no-cron       Skip cron job creation
+#   --no-fetch      Skip EOL API fetch (use if no internet — deploy cache later)
+#   --no-run        Skip initial inventory run
+#   --uninstall     Remove everything
+#   --dir <path>    Override install directory (default: /data/software/application_scripts/software_inventory)
+#   --cron <expr>   Override cron schedule (default: "0 */6 * * *")
+#
+# Supports: RHEL, Oracle Linux, Rocky, Alma, CentOS, Fedora, Debian, Ubuntu, SUSE
+# =============================================================================
+
+set -euo pipefail
+
+# --- Defaults ---
+INSTALL_DIR="/data/software/application_scripts/software_inventory"
+TEXTFILE_DIR="/var/lib/prometheus/node-exporter"
+CRON_SCHEDULE="0 */6 * * *"
+EOL_API_URL="https://endoflife.date/api/v1/products/full"
+DO_CRON=true
+DO_FETCH=true
+DO_RUN=true
+DO_UNINSTALL=false
+
+# --- Colors ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log()  { echo -e "${GREEN}[✓]${NC} $1"; }
+warn() { echo -e "${YELLOW}[!]${NC} $1"; }
+err()  { echo -e "${RED}[✗]${NC} $1"; }
+info() { echo -e "${BLUE}[→]${NC} $1"; }
+
+# --- Parse arguments ---
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-cron)    DO_CRON=false; shift ;;
+        --no-fetch)   DO_FETCH=false; shift ;;
+        --no-run)     DO_RUN=false; shift ;;
+        --uninstall)  DO_UNINSTALL=true; shift ;;
+        --dir)        INSTALL_DIR="$2"; shift 2 ;;
+        --cron)       CRON_SCHEDULE="$2"; shift 2 ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --no-cron       Skip cron job creation"
+            echo "  --no-fetch      Skip EOL API fetch (deploy without internet)"
+            echo "  --no-run        Skip initial inventory run"
+            echo "  --uninstall     Remove everything"
+            echo "  --dir <path>    Install directory (default: $INSTALL_DIR)"
+            echo "  --cron <expr>   Cron schedule (default: \"$CRON_SCHEDULE\")"
+            exit 0 ;;
+        *) err "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# --- Root check ---
+if [[ $EUID -ne 0 ]]; then
+    err "This script must be run as root (or with sudo)."
+    exit 1
+fi
+
+echo ""
+echo "=============================================="
+echo "  Linux Software Inventory — Installer"
+echo "=============================================="
+echo ""
+
+# =================================================================
+# UNINSTALL
+# =================================================================
+if [[ "$DO_UNINSTALL" == "true" ]]; then
+    info "Uninstalling software inventory..."
+
+    # Remove cron
+    crontab -l 2>/dev/null | grep -v "linux_inventory.sh" | crontab - 2>/dev/null || true
+    log "Removed cron job"
+
+    # Remove prom file
+    rm -f "${TEXTFILE_DIR}/linux_inventory.prom"
+    log "Removed Prometheus metrics file"
+
+    # Remove install directory
+    if [[ -d "$INSTALL_DIR" ]]; then
+        rm -rf "$INSTALL_DIR"
+        log "Removed $INSTALL_DIR"
+    fi
+
+    log "Uninstall complete."
+    exit 0
+fi
+
+# =================================================================
+# STEP 1: Install dependencies
+# =================================================================
+info "Installing dependencies..."
+
+if command -v dnf &>/dev/null; then
+    dnf install -y -q jq openssl 2>/dev/null
+    log "Installed jq, openssl (dnf)"
+elif command -v yum &>/dev/null; then
+    yum install -y -q jq openssl 2>/dev/null
+    log "Installed jq, openssl (yum)"
+elif command -v apt-get &>/dev/null; then
+    apt-get update -qq 2>/dev/null
+    apt-get install -y -qq jq openssl 2>/dev/null
+    log "Installed jq, openssl (apt)"
+elif command -v zypper &>/dev/null; then
+    zypper --non-interactive install jq openssl 2>/dev/null
+    log "Installed jq, openssl (zypper)"
+else
+    warn "Unknown package manager — please install jq and openssl manually."
+fi
+
+# Verify jq is available
+if ! command -v jq &>/dev/null; then
+    err "jq is required but could not be installed. Please install it manually."
+    exit 1
+fi
+
+# =================================================================
+# STEP 2: Create directories
+# =================================================================
+info "Creating directories..."
+
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$TEXTFILE_DIR"
+chmod 755 "$INSTALL_DIR" "$TEXTFILE_DIR"
+
+log "Created $INSTALL_DIR"
+log "Created $TEXTFILE_DIR"
+
+# =================================================================
+# STEP 3: Deploy linux_inventory.sh
+# =================================================================
+info "Deploying linux_inventory.sh..."
+
+cat > "${INSTALL_DIR}/linux_inventory.sh" << 'INVENTORY_SCRIPT_EOF'
+#!/bin/bash
+# =============================================================================
 # Linux Software Inventory & System Info — Prometheus Metrics Generator
 # =============================================================================
 # Generates rich package metadata and system information in Prometheus
@@ -1437,3 +1596,152 @@ mv "$TMP_OUTPUT_FILE" "$OUTPUT_FILE"
 trap - EXIT
 
 echo "Linux inventory generated: $package_count packages, $updates_total updates ($security_total security), written to $OUTPUT_FILE (${SECONDS}s)"
+INVENTORY_SCRIPT_EOF
+
+chmod 755 "${INSTALL_DIR}/linux_inventory.sh"
+log "Deployed linux_inventory.sh ($(wc -l < "${INSTALL_DIR}/linux_inventory.sh") lines)"
+
+# =================================================================
+# STEP 4: Deploy eol-products.conf (only if not already present)
+# =================================================================
+if [[ -f "${INSTALL_DIR}/eol-products.conf" ]]; then
+    warn "eol-products.conf already exists — preserving your customisations"
+else
+    info "Deploying eol-products.conf..."
+
+    cat > "${INSTALL_DIR}/eol-products.conf" << 'EOL_CONFIG_EOF'
+# =============================================================================
+# EOL Product Overrides — /data/software/.../eol-products.conf
+# =============================================================================
+#
+# *** YOU PROBABLY DON'T NEED TO ADD ANYTHING HERE ***
+#
+# When eol-full.json is present (pushed by Ansible), the script AUTO-MATCHES
+# every installed package against all 430+ products in endoflife.date.
+# Docker, PostgreSQL, Nginx, Redis, RabbitMQ, etc. are found automatically.
+#
+# This file is for:
+#   1. OVERRIDES  — fix a wrong auto-detected version or cycle
+#   2. ADDITIONS  — software that isn't in a package (containers, binaries, etc.)
+#
+# Format (one per line):
+#   product:cycle:label:version
+#
+# Fields:
+#   product  — endoflife.date product slug (required)
+#   cycle    — release cycle to check (required)
+#   label    — display name for Grafana dashboards (required)
+#   version  — installed version (optional, defaults to cycle)
+#
+# Lines starting with # are comments. Blank lines are ignored.
+#
+# How to find the product slug:
+#   curl -s https://endoflife.date/api/all.json | jq -r '.[]' | grep -i <name>
+#
+# =============================================================================
+
+# --- Overrides (uncomment if auto-detection gets it wrong) ---
+# Example: Splunk Forwarder detected as wrong cycle
+# splunk:9.4:Splunk Forwarder:9.4.7
+
+# --- Additions (software not installed as a system package) ---
+# Example: Kubernetes running in containers, not as a host package
+# kubernetes:1.29:Kubernetes:1.29.3
+
+# Example: Terraform is a single binary, not a package
+# terraform:1.7:Terraform:1.7.5
+EOL_CONFIG_EOF
+
+    chmod 644 "${INSTALL_DIR}/eol-products.conf"
+    log "Deployed eol-products.conf"
+fi
+
+# =================================================================
+# STEP 5: Fetch full EOL dump from endoflife.date API
+# =================================================================
+if [[ "$DO_FETCH" == "true" ]]; then
+    info "Fetching EOL data from endoflife.date API (this may take a moment)..."
+
+    if command -v curl &>/dev/null; then
+        HTTP_CODE=$(curl -sf --max-time 60 \
+            -H "Accept: application/json" \
+            -w "%{http_code}" \
+            -o "${INSTALL_DIR}/eol-full.json" \
+            "$EOL_API_URL" 2>/dev/null) || HTTP_CODE="000"
+
+        if [[ "$HTTP_CODE" == "200" ]]; then
+            DUMP_SIZE=$(du -h "${INSTALL_DIR}/eol-full.json" | cut -f1)
+            PRODUCT_COUNT=$(jq -r '.total // .result | length' "${INSTALL_DIR}/eol-full.json" 2>/dev/null || echo "?")
+            log "Downloaded eol-full.json (${DUMP_SIZE}, ${PRODUCT_COUNT} products)"
+        else
+            err "Failed to fetch EOL dump (HTTP ${HTTP_CODE})."
+            warn "The script will still work but EOL checking will use legacy fallback."
+            warn "You can retry later: curl -sf '$EOL_API_URL' -o '${INSTALL_DIR}/eol-full.json'"
+            rm -f "${INSTALL_DIR}/eol-full.json"
+        fi
+    else
+        warn "curl not installed — skipping EOL fetch."
+        warn "Install curl and re-run, or copy eol-full.json from another machine."
+    fi
+else
+    warn "Skipping EOL API fetch (--no-fetch)."
+    if [[ -f "${INSTALL_DIR}/eol-full.json" ]]; then
+        info "Existing eol-full.json found — will use that."
+    else
+        warn "No eol-full.json present. Copy one from another machine or re-run without --no-fetch."
+    fi
+fi
+
+# =================================================================
+# STEP 6: Set up cron job
+# =================================================================
+if [[ "$DO_CRON" == "true" ]]; then
+    info "Setting up cron job..."
+
+    CRON_JOB="${CRON_SCHEDULE} ${INSTALL_DIR}/linux_inventory.sh > /dev/null 2>&1"
+    CRON_COMMENT="# Linux software inventory collection"
+
+    # Remove old entry if present, then add new one
+    (crontab -l 2>/dev/null | grep -v "linux_inventory.sh" ; echo "$CRON_COMMENT" ; echo "$CRON_JOB") | crontab -
+
+    log "Cron job created: ${CRON_SCHEDULE}"
+else
+    warn "Skipping cron setup (--no-cron)."
+fi
+
+# =================================================================
+# STEP 7: Run initial collection
+# =================================================================
+if [[ "$DO_RUN" == "true" ]]; then
+    info "Running initial inventory collection..."
+    echo ""
+
+    if OUTPUT=$("${INSTALL_DIR}/linux_inventory.sh" 2>&1); then
+        log "$OUTPUT"
+    else
+        err "Initial run failed:"
+        echo "$OUTPUT"
+        warn "Check the script manually: ${INSTALL_DIR}/linux_inventory.sh"
+    fi
+else
+    warn "Skipping initial run (--no-run)."
+fi
+
+# =================================================================
+# DONE
+# =================================================================
+echo ""
+echo "=============================================="
+echo "  Installation Complete"
+echo "=============================================="
+echo ""
+echo "  Install directory:  ${INSTALL_DIR}"
+echo "  Script:             ${INSTALL_DIR}/linux_inventory.sh"
+echo "  EOL config:         ${INSTALL_DIR}/eol-products.conf"
+echo "  EOL data:           ${INSTALL_DIR}/eol-full.json"
+echo "  Metrics output:     ${TEXTFILE_DIR}/linux_inventory.prom"
+echo "  Cron schedule:      ${CRON_SCHEDULE}"
+echo ""
+echo "  To re-run manually: ${INSTALL_DIR}/linux_inventory.sh"
+echo "  To uninstall:       $0 --uninstall"
+echo ""
