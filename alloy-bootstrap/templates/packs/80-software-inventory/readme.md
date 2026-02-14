@@ -3,7 +3,6 @@
 A comprehensive Prometheus-based solution for Linux fleet inventory management, software lifecycle tracking, and compliance monitoring. Generates rich package metadata, system information, and end-of-life status in Prometheus textfile collector format for ingestion via node_exporter or Grafana Alloy.
 
 ![Grafana Dashboard](https://img.shields.io/badge/Grafana-Dashboard_Included-orange?logo=grafana)
-![License](https://img.shields.io/badge/License-MIT-blue)
 ![Shell](https://img.shields.io/badge/Shell-Bash_4%2B-green?logo=gnubash)
 
 ## Features
