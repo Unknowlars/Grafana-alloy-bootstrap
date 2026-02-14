@@ -5,6 +5,38 @@ A comprehensive Prometheus-based solution for Linux fleet inventory management, 
 ![Grafana Dashboard](https://img.shields.io/badge/Grafana-Dashboard_Included-orange?logo=grafana)
 ![Shell](https://img.shields.io/badge/Shell-Bash_4%2B-green?logo=gnubash)
 
+## Screenshots
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/Summary.png" alt="Software Inventory Summary" width="90%" />
+  <p><em>Software inventory summary with key risk and compliance indicators</em></p>
+</div>
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/fleet_overview_and_security_and_certs.png" alt="Fleet Overview, Security and Certificates" width="90%" />
+  <p><em>Fleet-wide overview of hosts, security posture, and certificate status</em></p>
+</div>
+
+<details>
+<summary><strong>📸 View All Screenshots</strong></summary>
+
+### Fleet & Security
+| | |
+|:---:|:---:|
+| ![Summary](https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/Summary.png) | ![Fleet Overview, Security and Certificates](https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/fleet_overview_and_security_and_certs.png) |
+| Summary | Fleet Overview, Security & Certificates |
+
+### Software Lifecycle
+| | |
+|:---:|:---:|
+| ![End of Life Tracking](https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/End_of_life_tracking.png) | ![Package Management 1](https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/Package_mangement_1.png) |
+| End-of-Life Tracking | Package Management Overview |
+| ![Package Management 2](https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/Package_mangement_2.png) | ![Docker, Containers, and Network Listening Ports](https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/docker_and_containers_and_network_listening_ports.png) |
+| Package Management Details | Docker, Containers & Listening Ports |
+
+</details>
+
+
 ## Features
 
 ### 📦 Package Inventory
