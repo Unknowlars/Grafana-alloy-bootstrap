@@ -13,8 +13,8 @@ A comprehensive Prometheus-based solution for Linux fleet inventory management, 
 </div>
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/fleet_overview_and_security_and_certs.png" alt="Fleet Overview, Security and Certificates" width="90%" />
-  <p><em>Fleet-wide overview of hosts, security posture, and certificate status</em></p>
+  <img src="https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/main/alloy-bootstrap/templates/packs/80-software-inventory/screenshots/End_of_life_tracking.png" alt="Fleet Overview, Security and Certificates" width="90%" />
+  <p><em>End of Life Tracking</em></p>
 </div>
 
 <details>
