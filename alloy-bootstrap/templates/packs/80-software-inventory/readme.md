@@ -62,7 +62,7 @@ curl -sL https://raw.githubusercontent.com/Unknowlars/Grafana-alloy-bootstrap/re
 
 ```bash
 # Clone or download the repository
-git clone https://github.com/your-repo/alloy-bootstrap.git
+git clone https://github.com/Unknowlars/Grafana-alloy-bootstrap.git
 cd alloy-bootstrap/templates/packs/80-software-inventory
 
 # Deploy the script
