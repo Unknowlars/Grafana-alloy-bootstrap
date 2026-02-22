@@ -26,14 +26,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Find shell scripts
-        id: scripts
+      - name: Find and syntax check shell scripts
         run: |
-          echo "scripts=$(find . -type f -name '*.sh' | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> $GITHUB_OUTPUT
-
-      - name: Syntax check all shell scripts
-        run: |
-          for script in ${{ fromJson(steps.scripts.outputs.scripts) }}; do
+          set -e
+          scripts=$(find . -type f -name '*.sh' 2>/dev/null || true)
+          if [ -z "$scripts" ]; then
+            echo "No shell scripts found"
+            exit 0
+          fi
+          echo "Found shell scripts:"
+          echo "$scripts"
+          echo ""
+          for script in $scripts; do
             echo "Checking $script..."
             bash -n "$script"
           done
