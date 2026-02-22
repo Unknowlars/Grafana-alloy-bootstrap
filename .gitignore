@@ -1,0 +1,32 @@
+# Build outputs
+*.zip
+*.tar.gz
+*.deb
+*.rpm
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# State files (machine-specific)
+/var/lib/alloy-bootstrap/
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Environment files with secrets
+.env
+.env.local
+
+# Logs
+*.log

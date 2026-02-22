@@ -1,237 +1,239 @@
-# Grafana Alloy installer script
+# Grafana Alloy Bootstrap
 
-**Automated, rerunnable installer + config generator for Grafana Alloy on Debian/Ubuntu.**
+[![CI](https://github.com/Unknowlars/Grafana-alloy-bootstrap/actions/workflows/ci.yml/badge.svg)](https://github.com/Unknowlars/Grafana-alloy-bootstrap/actions/workflows/ci.yml)
+[![ShellCheck](https://img.shields.io/badge/ShellCheck-passing-brightgreen)](https://www.shellcheck.net/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/Unknowlars/Grafana-alloy-bootstrap)](https://github.com/Unknowlars/Grafana-alloy-bootstrap/stargazers)
 
-Run one script, select “packs” (pre-configured metrics/log collectors), enter your Prometheus and/or Loki endpoints, and it generates `/etc/alloy/config.alloy` and reloads Alloy.
+> Automated, rerunnable installer and configuration generator for Grafana Alloy on Debian/Ubuntu.
 
-This project supports **both interactive** (menu + prompts) and **non-interactive / silent** installs (CLI flags), which is useful for automation/provisioning.
-
-
-## Quick start
-
-```bash
-git clone https://github.com/Unknowlars/Grafana-alloy-bootstrap.git
-cd Grafana-alloy/alloy-bootstrap
-chmod +x setup.sh
-sudo ./setup.sh
-```
+Run one script, select "packs" (pre-configured metrics/log collectors), enter your Prometheus/Loki endpoints, and it generates `/etc/alloy/config.alloy` and reloads Alloy.
 
 ---
 
-## Interactive mode (default)
+## Features
 
-Interactive mode shows a menu of packs and prompts you for required settings (Prometheus/Loki endpoints, pack variables, optional UI bind).
-
-### Example interactive run
-
-```bash
-./setup.sh
-
-==> Starting alloy-bootstrap setup (rerunnable) ...
-==> Alloy installed version: 1.12.1-1
-==> Alloy APT candidate:     1.12.1-1
-==> Alloy is up to date (or no candidate available).
-
-Available collection packs:
-
-   1) [x] Host metrics (node_exporter)  [metrics]
-   2) [x] Host logs (journald + /var/log)  [logs]
-   3) [x] Docker containers (cAdvisor metrics + docker logs)  [metrics,logs]
-   4) [ ] Scrape logporter metrics (custom Prometheus scrape)  [metrics]
-   5) [ ] Postgres exporter scrape  [metrics]
-   6) [ ] Traefik metrics scrape (integrations/traefik)  [metrics]
-   7) [ ] Traefik access logs (file) -> GeoIP country label -> Loki  [logs]
-   8) [ ] Enable livedebugging (Alloy UI debug stream)  [none]
-
-Previously enabled packs: host-metrics host-logs docker
-
-Select packs by number (space-separated) [1 2 3]: 1 2 3
-
-Prometheus/VictoriaMetrics base (previous: http://192.168.0.123:9090) — enter http(s)://host:port or host:port [http://192.168.0.123:9090]:
-==> Using Prometheus/VictoriaMetrics base: http://192.168.0.123:9090
-
-Loki base (previous: http://192.168.0.123:3400) — enter http(s)://host:port or host:port [http://192.168.0.123:3400]:
-==> Using Loki base: http://192.168.0.123:3400
-
-==> Pack-specific settings:
-Expose Alloy HTTP UI on network (sets --server.http.listen-addr)? [y/N]: y
-Listen address (host:port) [127.0.0.1:12345]:
-==> Using Alloy UI listen addr: 127.0.0.1:12345
-==> Backed up /etc/default/alloy -> /etc/default/alloy.bak.20251220-224151
-==> Wrote /etc/default/alloy
-==> Backed up /etc/alloy/config.alloy -> /etc/alloy/config.alloy.bak.20251220-224151
-==> Installed validated config to /etc/alloy/config.alloy
-==> User 'alloy' already in group 'docker'.
-==> User 'alloy' already in group 'systemd-journal'.
-==> User 'alloy' already in group 'adm'.
-==> Reloaded Alloy.
-==> Saved state to /var/lib/alloy-bootstrap/state.env
-==> Done. Run again anytime after git pull or when adding packs.
-  Prom remote_write: http://192.168.0.123:9090/api/v1/write
-  Loki push:         http://192.168.0.123:3400/loki/api/v1/push
-  Alloy UI listen:   127.0.0.1:12345
-```
+- :rocket: **One-command setup** - Get Alloy running in minutes
+- :repeat: **Idempotent** - Run multiple times safely; only applies changes when needed
+- :computer: **Interactive & silent modes** - Menu-driven or automation-friendly CLI flags
+- :package: **Modular packs** - Enable only what you need (host metrics, Docker, logs, etc.)
+- :shield: **Automatic backups** - Timestamped backups before every change
+- :test_tube: **CI tested** - ShellCheck validated on every change
 
 ---
 
-## Non-interactive / silent mode
-
-Silent mode skips all prompts. You provide everything via CLI flags (or it reuses values from the saved state file).
-
-### Example silent run
+## Quick Start
 
 ```bash
-sudo ./setup.sh --non-interactive \
+# Clone and run (one-liner)
+git clone https://github.com/Unknowlars/Grafana-alloy-bootstrap.git && \
+  cd Grafana-alloy-bootstrap && chmod +x alloy-bootstrap/setup.sh && \
+  sudo ./alloy-bootstrap/setup.sh
+```
+
+The script will:
+1. Check for/install Grafana Alloy (official APT repository)
+2. Show a menu of available packs
+3. Ask for Prometheus and Loki endpoints
+4. Generate `/etc/alloy/config.alloy`
+5. Enable and start the Alloy service
+
+---
+
+## Requirements
+
+- **OS**: Debian-based Linux (Debian 11+, Ubuntu 20.04+, Raspberry Pi OS)
+- **Permissions**: Root access (sudo)
+- **Network**: Outbound access to your Prometheus/Loki endpoints
+
+---
+
+## Usage Modes
+
+### Interactive Mode (Default)
+
+```bash
+sudo ./alloy-bootstrap/setup.sh
+```
+
+Shows a menu where you can:
+- Select which packs to enable
+- Configure Prometheus/Loki endpoints
+- Enable the Alloy web UI
+
+### Silent Mode (Automation)
+
+Perfect for Docker, Ansible, Terraform, or cloud-init:
+
+```bash
+sudo ./alloy-bootstrap/setup.sh \
+  --non-interactive \
   --packs host-metrics,host-logs,docker \
-  --prom-base-url http://192.168.0.123:8429 \
-  --loki-base-url http://192.168.0.238:3400 \
+  --prom-base-url http://192.168.0.123:9090 \
+  --loki-base-url http://192.168.0.123:3400 \
   --ui-listen-addr 127.0.0.1:12345
 ```
 
-### How silent mode resolves values
+---
 
-- **Packs**:
-  - Use `--packs ...` if provided
-  - Otherwise reuse `LAST_SELECTED_PACK_IDS` from `/var/lib/alloy-bootstrap/state.env` (if present)
-- **Prometheus/Loki endpoints**:
-  - Use `--prom-base-url` / `--loki-base-url` if provided
-  - Otherwise reuse `LAST_PROM_BASE_URL` / `LAST_LOKI_BASE_URL` from state (if present)
-  - If you selected a metrics/logs pack but no endpoint can be resolved, the script exits with an error.
-- **Pack variables** (`vars=` in `pack.conf`):
-  - Highest priority: existing environment variable (e.g. `LOGPORTER_ADDR=...`)
-  - Next: `--var NAME=value`
-  - Next: default value from the pack (`vars=NAME:Prompt:Default`)
-  - If no value can be resolved and there is no default, the script exits with an error.
-- **Alloy UI listen address**:
-  - Use `--ui-listen-addr host:port` to enable it
-  - Use `--no-ui` to force-disable it
+## Available Packs
 
-### Pack variable examples
+| # | Pack | ID | Signals | Description |
+|---|------|-----|---------|-------------|
+| 1 | Host metrics | `host-metrics` | metrics | node_exporter for CPU, memory, disk, network |
+| 2 | Host logs | `host-logs` | logs | journald, syslog, /var/log collection |
+| 3 | Docker | `docker` | metrics,logs | cAdvisor + Docker container logs |
+| 4 | Logporter | `logporter` | metrics | Custom Prometheus scrape target |
+| 5 | PostgreSQL | `postgres` | metrics | postgres_exporter scrape |
+| 6 | Traefik metrics | `traefik-metrics` | metrics | Traefik integrations |
+| 7 | Traefik access logs | `traefik-access-logs-geoip` | logs | Access logs with GeoIP country labels |
+| 8 | Software inventory | `software-inventory` | metrics | Linux packages, updates, system info |
+| 9 | Live debugging | `livedebugging` | none | Alloy UI debug stream |
 
-```bash
-sudo ./setup.sh --non-interactive \
-  --packs logporter \
-  --prom-base-url http://192.168.0.123:8429 \
-  --var LOGPORTER_ADDR=192.168.0.50:9999
+**Signal Types:**
+- `metrics` - Requires Prometheus/VictoriaMetrics endpoint
+- `logs` - Requires Loki endpoint
+- `metrics,logs` - Requires both endpoints
+- `none` - No external endpoint required
+
+---
+
+## Command-Line Options
+
+### General Options
+
+| Option | Description |
+|--------|-------------|
+| `--debug` | Enable shell trace (`set -x`) |
+| `--no-install` | Skip Alloy APT install/upgrade checks |
+| `-h, --help` | Show help message |
+
+### Silent Mode Options
+
+| Option | Description |
+|--------|-------------|
+| `--non-interactive` | Run without prompts |
+| `--yes` | Auto-answer "yes" to prompts |
+| `--packs <ids>` | Comma-separated pack IDs |
+| `--prom-base-url <url>` | Prometheus/VictoriaMetrics base URL |
+| `--loki-base-url <url>` | Loki base URL |
+| `--ui-listen-addr <addr>` | Enable Alloy UI (e.g., `127.0.0.1:12345`) |
+| `--no-ui` | Force-disable Alloy UI |
+| `--var NAME=value` | Pack-specific variable (repeatable) |
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `STABILITY_LEVEL` | Alloy stability track | `generally-available` |
+| `COMMUNITY_COMPONENTS` | Enable community components | `false` |
+
+---
+
+## What It Changes
+
+On each run, the script:
+
+1. **Writes configuration** (with timestamped backups):
+   - `/etc/alloy/config.alloy` - Alloy configuration
+   - `/etc/default/alloy` - Alloy environment variables
+
+2. **Saves state** (for next run defaults):
+   - `/var/lib/alloy-bootstrap/state.env`
+
+3. **Manages service**:
+   - Enables and starts `alloy.service`
+   - Reloads or restarts as needed
+
+4. **Sets permissions**:
+   - Adds `alloy` user to required groups (`docker`, `systemd-journal`, etc.)
+
+---
+
+## How It Works
+
+```
+┌─────────────────┐
+│  User runs      │
+│  setup.sh       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Discover packs │
+│  from templates │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  User selects   │
+│  packs (menu)   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Prompt for     │
+│  endpoints      │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  envsubst       │
+│  templates      │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Write config   │
+│  with backups   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Restart Alloy  │
+│  service        │
+└─────────────────┘
 ```
 
-Or with environment variables:
+Packs are discovered from `templates/packs/*/pack.conf` and rendered using `envsubst`. Each pack provides a modular snippet that can be independently enabled or disabled.
+
+---
+
+## Troubleshooting
+
+### Check Alloy Status
 
 ```bash
-export LOGPORTER_ADDR="192.168.0.50:9999"
-sudo ./setup.sh --non-interactive --packs logporter --prom-base-url http://192.168.0.123:8429
+systemctl status alloy
+journalctl -u alloy -n 100 --no-pager
 ```
 
----
-
-## What it changes on your system
-
-On each run it:
-
-- Writes (with timestamped backups):
-  - `/etc/alloy/config.alloy`
-  - `/etc/default/alloy`
-- Stores your last answers (defaults for next run):
-  - `/var/lib/alloy-bootstrap/state.env`
-- Enables + reloads/restarts:
-  - `alloy.service`
-- Adds the `alloy` user to groups required by selected packs (e.g. `docker`, `systemd-journal`, `adm`)
-
-> **Security note:** enabling some packs changes what the Alloy service user can access (especially Docker + system logs). Only enable what you need.
-
----
-
-## How it works
-
-- Discovers packs from `templates/packs/*/pack.conf`
-- Interactive mode: you select packs in a menu
-- Silent mode: packs/settings come from flags and/or saved state
-- Renders templates with `envsubst`
-- Writes a combined config:
-  - shared **sinks** from `templates/sinks/`
-  - selected **packs** from `templates/packs/`
-- Formats (best-effort): `alloy fmt --write /etc/alloy/config.alloy`
-- Reloads (or restarts) Alloy
-
----
-
-## Available packs
-
-> This table describes the packs currently shipped in this repo. Add/remove packs by editing `templates/packs/`.
-
-| Pack | ID | Signals | Prompts | Notes |
-|---|---|---:|---|---|
-| Host metrics (node_exporter) | `host-metrics` | metrics | — | Requires Prom/VictoriaMetrics remote_write |
-| Host logs (syslog + messages + auth + journald + /var/log) | `host-logs` | logs | — | Adds `alloy` to `systemd-journal` + `adm` |
-| Docker (cAdvisor metrics + docker logs) | `docker` | metrics,logs | — | Adds `alloy` to `docker` group |
-| Logporter scrape (custom Prometheus scrape) | `logporter` | metrics | `LOGPORTER_ADDR` | Scrapes HTTP promthues endpoint from logporter, check https://github.com/Lifailon/logporter |
-| Postgres exporter scrape | `postgres` | metrics | `POSTGRES_EXPORTER_ADDR` | Scrapes postgres-exporter you provide |
-| Traefik metrics scrape (integrations/traefik) | `traefik-metrics` | metrics | `TRAEFIK_METRICS_ADDR` | Scrapes Traefik metrics endpoint you provide |
-| Live debugging (Alloy UI debug stream) | `livedebugging` | none | — | Debug-only; no Prom/Loki required |
-
-**Signals:**
-- `metrics` → you’ll be prompted for Promethues base URL and the script appends `/api/v1/write`
-- `logs` → you’ll be prompted for Loki base URL and the script appends `/loki/api/v1/push`
-
----
-
-## Options
-
-### General options
+### Validate Configuration
 
 ```bash
-sudo ./setup.sh --debug
-sudo ./setup.sh --no-install
+alloy validate /etc/alloy/config.alloy
+alloy fmt --check /etc/alloy/config.alloy
 ```
 
-- `--debug`: shell trace (`set -x`)
-- `--no-install`: skip Alloy APT install/upgrade checks
-
-### Silent mode options
+### Debug Mode
 
 ```bash
-sudo ./setup.sh --non-interactive --packs host-metrics --prom-base-url http://192.168.0.123:8429
+sudo ./alloy-bootstrap/setup.sh --debug
 ```
 
-Flags:
-- `--non-interactive` / `--silent`: no prompts (automation-friendly)
-- `--yes`: answer “yes” to yes/no prompts (install/upgrade checks) in silent mode
-- `--packs <id1,id2,...>`: comma/space-separated pack IDs
-- `--prom-base-url <http(s)://host:port | host:port>`: Prometheus/VictoriaMetrics base
-- `--loki-base-url <http(s)://host:port | host:port>`: Loki base
-- `--ui-listen-addr <host:port>`: enable Alloy UI listen address
-- `--no-ui`: force-disable Alloy UI
-- `--var NAME=value`: pack variables (repeatable)
+### Rollback
 
----
-
-## Exposing the Alloy UI
-
-If you enable the UI, the script writes this to `/etc/default/alloy`:
-
+Backups are created automatically:
 ```bash
-CUSTOM_ARGS="--server.http.listen-addr=0.0.0.0:12345"
-```
+# Find backups
+ls -la /etc/alloy/config.alloy.bak.*
 
-Binding to `0.0.0.0` exposes the UI on the network. Prefer 127.0.0.1:12345
----
-
-## Rollback / undo
-
-Backups are created each run:
-
-- `/etc/alloy/config.alloy.bak.<timestamp>`
-- `/etc/default/alloy.bak.<timestamp>`
-
-Restore and restart:
-
-```bash
-sudo cp -a /etc/alloy/config.alloy.bak.<timestamp> /etc/alloy/config.alloy
-sudo cp -a /etc/default/alloy.bak.<timestamp> /etc/default/alloy
+# Restore
+sudo cp /etc/alloy/config.alloy.bak.20251220-224151 /etc/alloy/config.alloy
 sudo systemctl restart alloy
 ```
 
-Forget previous selections:
+### Reset State
 
 ```bash
 sudo rm -f /var/lib/alloy-bootstrap/state.env
@@ -239,34 +241,31 @@ sudo rm -f /var/lib/alloy-bootstrap/state.env
 
 ---
 
-## Packs for contributors
+## Contributing
 
-Each pack folder contains:
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
-- `pack.conf` (metadata shown in the menu)
-- `config.alloy.tmpl` (Alloy snippet rendered via `envsubst`)
-
-### `pack.conf` keys
-
-Required:
-- `id=...`
-- `title=...`
-- `signals=metrics` or `logs` or `metrics,logs` or `none`
-
-Optional:
-- `requires_group=...` (script adds user `alloy` to the group)
-- `vars=VAR:Prompt:Default,VAR2:Prompt:Default` (pack-specific prompts)
-
-Templates can use variables like `${PROM_REMOTE_WRITE_URL}`, `${LOKI_PUSH_URL}`, and any vars from `vars=`.
+- How to set up a development environment
+- How to add a new pack
+- Coding standards (in [AGENTS.md](AGENTS.md))
+- Pull request process
 
 ---
 
-## Useful commands
+## Security
 
-```bash
-systemctl status alloy
-journalctl -u alloy -n 200 --no-pager
-sudo alloy fmt --check /etc/alloy/config.alloy
-sudo systemctl reload alloy
-sudo systemctl restart alloy
-```
+See [SECURITY.md](SECURITY.md) for our security policy and how to report vulnerabilities.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+---
+
+## Resources
+
+- [Grafana Alloy Documentation](https://grafana.com/docs/alloy/)
+- [ShellCheck](https://www.shellcheck.net/) - Bash linting
+- [Alloy Configuration Reference](https://grafana.com/docs/alloy/reference/configuration/)

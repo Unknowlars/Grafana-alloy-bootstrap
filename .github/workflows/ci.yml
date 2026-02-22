@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint:
+    name: ShellCheck Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          severity: warning
+
+  syntax:
+    name: Bash Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Find shell scripts
+        id: scripts
+        run: |
+          echo "scripts=$(find . -type f -name '*.sh' | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> $GITHUB_OUTPUT
+
+      - name: Syntax check all shell scripts
+        run: |
+          for script in ${{ fromJson(steps.scripts.outputs.scripts) }}; do
+            echo "Checking $script..."
+            bash -n "$script"
+          done
