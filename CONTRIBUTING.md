@@ -2,10 +2,6 @@
 
 Thank you for your interest in contributing! This guide will help you get started.
 
-## Code of Conduct
-
-Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md) to keep our community welcoming and respectful.
-
 ## How to Contribute
 
 ### Reporting Bugs
